@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/*
+ * ── Board scale system ──────────────────────────────────────────────────────
+ *
+ * Every mark drawn on the floor map (desk node, STT dot, caption) is sized from
+ * `--node`, which tracks the board's own HEIGHT through container query units.
+ *
+ * Why: desk coordinates are percentages, so the px distance between two rows
+ * shrinks with the board (≈65px on a desktop, ≈48px on an iPad). Fixed px marks
+ * (a 36px node + a dot row hanging 22px below its center) therefore fit on a
+ * desktop but collide with the row underneath on an iPad. Scaling the marks with
+ * the board keeps the clearance proportional — no overlap at any size.
+ *
+ * Vertical budget for one row (enforced in layoutConfig by MIN_ROW_PITCH):
+ *   node/2 + air + dot = 1.12 × node ≈ 6.2% of the board height below a node's
+ *   center, plus half a node for the row underneath → rows are spaced ≥ 11%.
+ *
+ * NOTE: the variables are declared here but only ever *used* by descendants of
+ * `.board` — container units resolve against the nearest ancestor container, so
+ * a `cqh` read inside `.board` itself would resolve against the wrong box.
+ */
+.board {
+  container-type: size;
+
+  /** Desk node edge length — the unit everything else derives from. */
+  --node: clamp(16px, 5.5cqh, 42px);
+  --node-fs: calc(var(--node) * 0.32);
+
+  /** STT dot (khách) attached under a node. */
+  --dot: calc(var(--node) * 0.5);
+  --dot-fs: calc(var(--dot) * 0.68);
+  --dot-gap: calc(var(--dot) * 0.28);
+  /** Air between a node's bottom edge and its row of STT dots. */
+  --dot-air: calc(var(--node) * 0.12);
+  /** Node center → STT dot row center: half a node, the air, half a dot. */
+  --dot-offset: calc(var(--node) * 0.5 + var(--dot-air) + var(--dot) * 0.5);
+
+  /** Dots inside the waiting zones — roomier, they are the primary target. */
+  --zone-dot: calc(var(--dot) * 1.2);
+  --zone-dot-fs: calc(var(--zone-dot) * 0.62);
+
+  /** Region / cluster captions. */
+  --label-fs: clamp(8px, 1.9cqh, 13px);
+  --label-sm-fs: clamp(7px, 1.5cqh, 11px);
+}
+
+/* Pre-container-query browsers: fall back to a fixed, non-colliding scale. */
+@supports not (container-type: size) {
+  .board {
+    --node: 30px;
+  }
+}
