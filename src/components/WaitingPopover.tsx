@@ -2,9 +2,10 @@
  * WaitingPopover — thông tin 1 khách đang ở khu vực chờ ngoài bàn (chưa gán
  * vào bàn cụ thể): "Chờ check-in" hoặc "Chờ điều phối".
  *
- * Cùng phong cách với `CustomerPopover` nhưng neo theo toạ độ khu vực chờ
- * (cố định, không phải toạ độ bàn) và luôn bung lên phía trên vì cả 2 khu vực
- * nằm sát mép dưới board.
+ * Cùng phong cách với `CustomerPopover` — neo đúng toạ độ ô STT vừa bấm
+ * (không phải 1 điểm cố định chung cho cả khu vực) và tự lật lên/xuống theo
+ * vị trí, vì lưới STT giờ trải khắp chiều cao board (ô hàng trên cần bung
+ * xuống, ô hàng dưới cần bung lên) chứ không còn luôn nằm sát đáy.
  */
 import { useEffect } from 'react';
 import type { WaitingZoneKey } from '@/components/LayoutDashboard';
@@ -61,10 +62,16 @@ export default function WaitingPopover({ zoneLabel, zone, customer, x, y, onClos
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Ô ở nửa trên lưới → bung xuống; ô ở nửa dưới → bung lên (như CustomerPopover).
+  const below = y < 45;
+  const transform = below
+    ? `translate(${translateX(x)}, 16px)`
+    : `translate(${translateX(x)}, calc(-100% - 10px))`;
+
   return (
     <div
       className="absolute z-50"
-      style={{ left: `${x}%`, top: `${y}%`, transform: `translate(${translateX(x)}, calc(-100% - 10px))` }}
+      style={{ left: `${x}%`, top: `${y}%`, transform }}
       role="dialog"
       aria-label={`Khách STT ${customer.stt ?? ''}`}
     >

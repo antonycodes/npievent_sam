@@ -6,7 +6,7 @@ import CustomerPopover from '@/components/CustomerPopover';
 import DeskPopover from '@/components/DeskPopover';
 import EndFlowTable from '@/components/EndFlowTable';
 import FilterBar, { type DeskFilters } from '@/components/FilterBar';
-import LayoutDashboard, { WAITING_ZONE_ANCHOR, type WaitingZoneKey } from '@/components/LayoutDashboard';
+import LayoutDashboard, { type WaitingZoneKey } from '@/components/LayoutDashboard';
 import Sidebar from '@/components/Sidebar';
 import StatusLegend from '@/components/StatusLegend';
 import WaitingPopover from '@/components/WaitingPopover';
@@ -26,7 +26,9 @@ export default function DashboardPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<{ deskId: string; index: number } | null>(null);
-  const [selectedWaiting, setSelectedWaiting] = useState<{ zone: WaitingZoneKey; index: number } | null>(null);
+  const [selectedWaiting, setSelectedWaiting] = useState<
+    { zone: WaitingZoneKey; index: number; x: number; y: number } | null
+  >(null);
   const [filters, setFilters] = useState<DeskFilters>(NO_FILTERS);
   const [showEndFlow, setShowEndFlow] = useState(false);
 
@@ -44,11 +46,16 @@ export default function DashboardPage() {
     );
   }, []);
 
-  const handleSelectWaiting = useCallback((zone: WaitingZoneKey, index: number) => {
-    setSelectedId(null);
-    setSelectedCustomer(null);
-    setSelectedWaiting((prev) => (prev?.zone === zone && prev?.index === index ? null : { zone, index }));
-  }, []);
+  const handleSelectWaiting = useCallback(
+    (zone: WaitingZoneKey, index: number, anchor: { x: number; y: number }) => {
+      setSelectedId(null);
+      setSelectedCustomer(null);
+      setSelectedWaiting((prev) =>
+        prev?.zone === zone && prev?.index === index ? null : { zone, index, x: anchor.x, y: anchor.y },
+      );
+    },
+    [],
+  );
 
   const dimmedIds = useMemo(() => {
     if (!filters.onlyVacant && !filters.onlyKythuat && !filters.onlyDeviceAccepted) return undefined;
@@ -79,7 +86,9 @@ export default function DashboardPage() {
     if (!selectedWaiting) return null;
     const list = selectedWaiting.zone === 'checkin' ? waitingCheckin : waitingDispatch;
     const customer = list[selectedWaiting.index];
-    return customer ? { zone: selectedWaiting.zone, customer } : null;
+    return customer
+      ? { zone: selectedWaiting.zone, customer, x: selectedWaiting.x, y: selectedWaiting.y }
+      : null;
   }, [selectedWaiting, waitingCheckin, waitingDispatch]);
 
   return (
@@ -182,8 +191,8 @@ export default function DashboardPage() {
                     zoneLabel={WAITING_ZONE_LABEL[selectedWaitingData.zone]}
                     zone={selectedWaitingData.zone}
                     customer={selectedWaitingData.customer}
-                    x={WAITING_ZONE_ANCHOR[selectedWaitingData.zone].x}
-                    y={WAITING_ZONE_ANCHOR[selectedWaitingData.zone].y}
+                    x={selectedWaitingData.x}
+                    y={selectedWaitingData.y}
                     onClose={() => setSelectedWaiting(null)}
                   />
                 ) : null

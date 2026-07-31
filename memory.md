@@ -1150,3 +1150,50 @@ trực tiếp `getBoundingClientRect()` các node/hàng chấm STT thật trên 
   25.33/dưới 13.81 — lệch hẳn về khoảng giữa). Test thêm ở tỉ lệ iPad
   (1180×820 ≈ 2360:1640) — không vỡ, không chồng lấn. `tsc`/`build` sạch,
   không console error.
+
+### Popup khu chờ STT neo đúng ô vừa bấm, không còn 1 điểm cố định (2026-07-31)
+User: "khu vực nhận STT pop up vẫn ở xa, điều chỉnh tương tự với các khu vực
+khác" — trước đó `WAITING_ZONE_ANCHOR` neo CỐ ĐỊNH 1 điểm (x:80,y:90, gần đáy
+khung) cho toàn bộ 24 ô, nên bấm ô hàng trên (y≈26%) thì popup vẫn bật ra tận
+y=90%, cách xa hẳn — không giống cách các bàn/chấm khác (mỗi cái tự neo đúng
+toạ độ của nó).
+
+- Đo thật `getBoundingClientRect()` cả 24 ô lưới đang render bằng CSS Grid để
+  lấy toạ độ chính xác (không đoán): cột cách đều 8.05% từ x=68.38%, hàng
+  cách đều 9.88% từ y=26.23%.
+- Bỏ hẳn CSS Grid cho lưới chờ — chuyển sang toạ độ tường minh
+  `WAITING_GRID_POSITIONS` (mảng 24 điểm board-relative, sinh từ 2 hằng số
+  gốc + bước lặp, dựa đúng số đo thật ở trên) và render từng ô là 1 phần tử
+  `absolute` độc lập (giống hệt cách bàn/chấm dưới bàn đã làm) thay vì để
+  flow layout tự chia — nhờ vậy mỗi ô có toạ độ THẬT để tự làm điểm neo popup.
+- `LayoutDashboard.tsx`: bỏ export `WAITING_ZONE_ANCHOR`; `onSelectWaiting`
+  nhận thêm tham số `anchor:{x,y}` (toạ độ ô vừa bấm) truyền thẳng lúc click,
+  không cần DashboardPage tự tra bảng nữa. `WaitingZone` tách thành
+  `WaitingZoneBox` (chỉ khung+nhãn+số đếm) — 24 ô render riêng ở component
+  cha, dùng chung `SttSlot` (component đã có sẵn từ bản trước).
+- `DashboardPage.tsx`: state `selectedWaiting` thêm `x`/`y` (lưu toạ độ ngay
+  lúc bấm thay vì tra `WAITING_ZONE_ANCHOR[zone]`); `WaitingPopover` đọc
+  thẳng `selectedWaitingData.x/y`.
+- `WaitingPopover.tsx`: thêm logic tự lật lên/xuống theo `y` (ngưỡng `y<45`,
+  giống hệt `CustomerPopover`) — trước đó luôn bung lên vì mặc định neo gần
+  đáy, giờ neo trải khắp lưới nên ô nửa trên phải bung XUỐNG mới đủ chỗ.
+- **Bug tự bắt lúc verify** (không phải do user báo): sau khi đổi sang toạ độ
+  tường minh, các Ô TRỐNG trong lưới co lại thành 1 vạch mỏng thay vì hình
+  tròn. Nguyên nhân: `SttSlot` nhánh rỗng là `<span>` (mặc định `display:
+  inline`) đặt `height`/`width` qua inline style — trình duyệt BỎ QUA
+  width/height trên phần tử `inline` thật sự (chỉ "ăn" khi phần tử là flex/
+  grid item hoặc tự có display khác). Ở bản chấm-dưới-bàn cũ nó tình cờ đúng
+  vì cha là `flex` (flex item luôn tôn trọng width/height dù `display` gốc
+  là gì); ô lưới chờ mới có cha KHÔNG phải flex (chỉ 1 div định vị absolute)
+  nên lộ bug. Fix: thêm `block` vào class của nhánh rỗng — sửa tận gốc ngay
+  tại `SttSlot` nên an toàn với mọi ngữ cảnh cha sau này, không chỉ vá chỗ
+  đang lỗi.
+- **Verify**: `tsc`/`build` sạch. Bấm ô "7" (hàng 1, y≈26%) → popup bung
+  NGAY DƯỚI ô đó (đúng như yêu cầu), không còn nhảy xuống đáy khung. Ô trống
+  hiện đúng hình tròn viền chấm trở lại. Không console error.
+  Lưu ý: `computer` click theo toạ độ pixel bị trượt/không bắt được vào đúng
+  lúc test (nghi do lệch tỉ lệ scale ảnh chụp màn hình 800px vs viewport
+  1600px thật) — phải chuyển sang bấm qua `ref` (từ `read_page`) rồi cuối
+  cùng bấm thẳng qua `element.click()` (JS) mới xác nhận được; đây là vấn đề
+  của công cụ test, không phải bug trong app (khớp với: bấm bàn KT1 qua `ref`
+  vẫn hoạt động bình thường ở các lượt verify trước trong phiên này).
