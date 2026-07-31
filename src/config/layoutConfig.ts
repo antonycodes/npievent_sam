@@ -89,19 +89,26 @@ function buildGrid(cluster: ClusterKey, xs: number[], ys: number[]): TablePositi
 }
 
 // ── Khu vực kỹ thuật (KT) — 3 nhân viên xếp hàng ngang, phía trên ───────────
-export const KYTHUAT_POSITIONS = buildGrid('kythuat', [34, 41, 48], [16]);
+// Cùng 3 cột X với khu Tư vấn bên dưới (12/32/52) để 2 khung thẳng hàng — bố
+// cục đọc "có chủ đích" hơn thay vì mỗi khung một khoảng cách ngẫu nhiên. Đo
+// trực tiếp trên trang chạy thật (getBoundingClientRect) để chọn pitch —
+// không đoán qua mắt: 20% ngang đủ rộng cho cả node lẫn hàng chấm STT dưới nó.
+const GROUP_X = [12, 32, 52];
+export const KYTHUAT_POSITIONS = buildGrid('kythuat', GROUP_X, [15]);
 
 // ── Khu vực tư vấn (TV) — 3 cặp bàn xếp dọc (tv1/2, tv3/4, tv5/6) ──────────
 // Numbering runs top→bottom WITHIN a group, then group-by-group left→right
 // (matches the reference image) — not a plain row-major grid, so the
-// positions are listed explicitly instead of through buildGrid.
+// positions are listed explicitly instead of through buildGrid. Row pitch 26%
+// (đo thật: node cao ~4.7%, hàng chấm STT kéo dài thêm ~5.3% dưới tâm node) —
+// đủ thoáng so với bản cũ (16%) nhưng không tạo khoảng trắng lớn giữa 2 hàng.
 export const CONSULT_POSITIONS: TablePosition[] = [
-  { id: 'TV1', cluster: 'consult', label: 'TV1', x: 14, y: 62 },
-  { id: 'TV2', cluster: 'consult', label: 'TV2', x: 14, y: 78 },
-  { id: 'TV3', cluster: 'consult', label: 'TV3', x: 32, y: 62 },
-  { id: 'TV4', cluster: 'consult', label: 'TV4', x: 32, y: 78 },
-  { id: 'TV5', cluster: 'consult', label: 'TV5', x: 50, y: 62 },
-  { id: 'TV6', cluster: 'consult', label: 'TV6', x: 50, y: 78 },
+  { id: 'TV1', cluster: 'consult', label: 'TV1', x: GROUP_X[0], y: 46 },
+  { id: 'TV2', cluster: 'consult', label: 'TV2', x: GROUP_X[0], y: 72 },
+  { id: 'TV3', cluster: 'consult', label: 'TV3', x: GROUP_X[1], y: 46 },
+  { id: 'TV4', cluster: 'consult', label: 'TV4', x: GROUP_X[1], y: 72 },
+  { id: 'TV5', cluster: 'consult', label: 'TV5', x: GROUP_X[2], y: 46 },
+  { id: 'TV6', cluster: 'consult', label: 'TV6', x: GROUP_X[2], y: 72 },
 ];
 assertGridSpacing('consult', CONSULT_POSITIONS);
 

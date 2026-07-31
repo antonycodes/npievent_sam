@@ -3,13 +3,16 @@
  *
  * Renders a 16:9 stage mirroring the new KT/Tư vấn floor-plan reference: 2
  * dashed zone boxes (Khu vực kỹ thuật, Khu vực tư vấn) as a backdrop, plus the
- * 9 interactive desks (driven by the `desks` array) with a few purely
- * decorative "customer" dots echoing the reference image, plus 1 merged
- * waiting-area box (khách nhận STT và đợi) on the right for customers not yet
- * assigned to a desk. "End Flow" (đã hoàn tất toàn bộ) is a separate table
- * view, not a board zone — see EndFlowTable, opened from a button in FilterBar.
+ * 9 interactive desks (driven by the `desks` array), plus 1 merged waiting-area
+ * box (khách nhận STT và đợi) on the right for customers not yet assigned to a
+ * desk. Both the waiting box and each Tư vấn desk's customer row render as a
+ * FIXED grid of slots (empty ones stay visible) rather than a list that grows
+ * with the data — per user feedback (2026-07-31), positions must stay stable
+ * and fill left-to-right instead of reflowing. "End Flow" (đã hoàn tất toàn
+ * bộ) is a separate table view, not a board zone — see EndFlowTable, opened
+ * from a button in FilterBar.
  */
-import { deskUiStatus, type DeskData, type WaitingCustomer } from '@/types/desk';
+import { DESK_CAPACITY, deskUiStatus, type DeskCustomer, type DeskData, type WaitingCustomer } from '@/types/desk';
 import Desk from './Desk';
 
 /** Khu vực chờ ngoài bàn (dùng để phân biệt khi bấm 1 chấm STT). */
@@ -48,12 +51,12 @@ interface LayoutDashboardProps {
 }
 
 /**
- * Số chấm STT hiển thị tối đa dưới 1 node — phần dư gộp thành "+n".
- * Bằng DESK_CAPACITY (2 khách/NV) nên bình thường không bao giờ bị gộp; giới hạn
- * này giữ cho hàng chấm luôn hẹp hơn khoảng cách giữa 2 bàn cạnh nhau, kể cả khi
- * dữ liệu Lark trả về nhiều khách bất thường trên cùng 1 bàn.
+ * Cụm hiển thị các ô STT dưới bàn dạng LƯỚI CỐ ĐỊNH (đủ `DESK_CAPACITY[cluster]`
+ * ô, ô trống vẫn hiện) thay vì chỉ hiện khi có khách — theo feedback: dễ thấy
+ * ngay bàn đó còn bao nhiêu chỗ mà không cần đợi có khách mới xuất hiện hàng
+ * chấm. Cụm khác (kythuat) giữ hành vi cũ: ẩn hẳn khi chưa có khách.
  */
-const MAX_DESK_DOTS = 2;
+const FIXED_SLOT_CLUSTERS = new Set(['consult']);
 
 /** Khung nét đứt cho 1 khu vực lớn (Kỹ thuật/Tư vấn) — nhãn ghim mép trên, không che các node bên trong. */
 function ZoneBox({ label, className }: { label: string; className: string }) {
@@ -67,16 +70,48 @@ function ZoneBox({ label, className }: { label: string; className: string }) {
 }
 
 /**
- * Chấm trang trí (không tương tác, không gắn dữ liệu) — biểu diễn khách đứng/
- * ngồi tại khu vực, đúng theo ảnh mẫu (đỏ = khách khu Tư vấn, xanh dương =
- * khách khu Kỹ thuật). Khác với chấm STT thật (cam) dưới mỗi bàn.
+ * 1 ô STT — cam (có khách, bấm được) hoặc rỗng/viền chấm (chưa có khách,
+ * không tương tác). `size`/`fontSize` là giá trị CSS thật (vd `'var(--dot)'`)
+ * truyền qua inline style — KHÔNG ghép vào class Tailwind, vì class dựng động
+ * lúc runtime (`` `h-[${x}]` ``) không được Tailwind quét thấy lúc build nên
+ * sẽ không sinh CSS tương ứng.
  */
-function DecorDot({ x, y, className }: { x: number; y: number; className: string }) {
+function SttSlot({
+  customer,
+  active,
+  onClick,
+  size,
+  fontSize,
+}: {
+  customer: DeskCustomer | null;
+  active?: boolean;
+  onClick?: () => void;
+  size: string;
+  fontSize: string;
+}) {
+  if (!customer) {
+    return (
+      <span
+        title="Còn trống"
+        className="shrink-0 rounded-full border border-dashed border-amber-300 bg-amber-100/40"
+        style={{ height: size, width: size }}
+      />
+    );
+  }
   return (
-    <span
-      className={`absolute h-[var(--dot)] w-[var(--dot)] -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-sm ${className}`}
-      style={{ left: `${x}%`, top: `${y}%` }}
-    />
+    <button
+      type="button"
+      title={`${customer.stt ? `#${customer.stt} · ` : ''}${customer.name ?? ''}`}
+      onClick={onClick}
+      className={[
+        'flex shrink-0 items-center justify-center rounded-full bg-amber-500 px-[2px] font-bold leading-none',
+        'text-white shadow ring-1 ring-white transition hover:scale-125',
+        active ? 'z-30 scale-125 ring-2 ring-blue-500 ring-offset-1' : '',
+      ].join(' ')}
+      style={{ height: size, width: size, fontSize }}
+    >
+      {customer.stt ?? '•'}
+    </button>
   );
 }
 
@@ -87,7 +122,11 @@ interface WaitingItem {
   customer: WaitingCustomer;
 }
 
-/** Hộp khu vực chờ: nhãn + các chấm STT (bấm để xem chi tiết khách). */
+/** Số ô cố định trong khu "Khách nhận STT và đợi" — lưới 4 cột × 6 hàng. */
+const WAITING_GRID_SIZE = 24;
+const WAITING_GRID_COLS = 4;
+
+/** Hộp khu vực chờ: lưới CỐ ĐỊNH 24 ô (ô trống vẫn hiện), điền trái→phải theo thứ tự khách. */
 function WaitingZone({
   label,
   items,
@@ -101,6 +140,11 @@ function WaitingZone({
   selectedWaiting?: { zone: WaitingZoneKey; index: number } | null;
   onSelect?: (zone: WaitingZoneKey, index: number) => void;
 }) {
+  const hasOverflow = items.length > WAITING_GRID_SIZE;
+  const slotCount = WAITING_GRID_SIZE - (hasOverflow ? 1 : 0);
+  const shown = items.slice(0, slotCount);
+  const overflow = items.length - shown.length;
+
   return (
     <div
       className={`absolute flex flex-col rounded-lg border border-dashed border-amber-300 bg-amber-50/60 p-[1.5%] text-center ${className}`}
@@ -113,32 +157,30 @@ function WaitingZone({
           </span>
         )}
       </div>
-      {/* Cuộn thay vì cắt cụt khi khu vực chờ đông khách. */}
-      <div className="mt-[3%] flex min-h-0 flex-1 flex-wrap content-start items-start justify-center gap-[var(--dot-gap)] overflow-y-auto">
-        {items.length === 0 ? (
-          <span className="text-[length:var(--label-sm-fs)] italic text-neutral-400">
-            Không có khách
+      <div
+        className="mt-[3%] grid flex-1 content-center items-center justify-items-center gap-[8%]"
+        style={{ gridTemplateColumns: `repeat(${WAITING_GRID_COLS}, minmax(0, 1fr))` }}
+      >
+        {Array.from({ length: slotCount }, (_, i) => shown[i] ?? null).map((item, i) => {
+          const active = Boolean(item) && selectedWaiting?.zone === item!.zone && selectedWaiting?.index === item!.index;
+          return (
+            <SttSlot
+              key={i}
+              customer={item?.customer ?? null}
+              active={active}
+              onClick={() => item && onSelect?.(item.zone, item.index)}
+              size="var(--zone-dot)"
+              fontSize="var(--zone-dot-fs)"
+            />
+          );
+        })}
+        {hasOverflow && (
+          <span
+            title={`Thêm ${overflow} khách`}
+            className="flex h-[var(--zone-dot)] w-[var(--zone-dot)] shrink-0 items-center justify-center rounded-full bg-amber-700 px-[3px] text-[length:var(--zone-dot-fs)] font-bold leading-none text-white shadow ring-1 ring-white"
+          >
+            +{overflow}
           </span>
-        ) : (
-          items.map((item) => {
-            const active = selectedWaiting?.zone === item.zone && selectedWaiting?.index === item.index;
-            return (
-              <button
-                key={`${item.zone}-${item.index}`}
-                type="button"
-                title={`${item.customer.stt ? `#${item.customer.stt} · ` : ''}${item.customer.name ?? ''}`}
-                onClick={() => onSelect?.(item.zone, item.index)}
-                className={[
-                  'flex h-[var(--zone-dot)] min-w-[var(--zone-dot)] shrink-0 items-center justify-center',
-                  'rounded-full bg-amber-500 px-[3px] text-[length:var(--zone-dot-fs)] font-bold leading-none',
-                  'text-white shadow ring-1 ring-white transition hover:scale-110',
-                  active ? 'z-30 scale-110 ring-2 ring-blue-500 ring-offset-1' : '',
-                ].join(' ')}
-              >
-                {item.customer.stt ?? '•'}
-              </button>
-            );
-          })
         )}
       </div>
     </div>
@@ -168,25 +210,14 @@ export default function LayoutDashboard({
       {/* Board visuals clip to the rounded card; popovers stay outside this
           layer (below) so they're never cut off near the board's edges. */}
       <div className="absolute inset-0 overflow-hidden rounded-xl border border-neutral-300 bg-neutral-50 shadow-inner">
-        {/* ── Khu vực kỹ thuật (KT) — khung + "màn hình" trang trí + khách trang trí ── */}
-        <ZoneBox label="Khu vực kỹ thuật" className="left-[24%] top-[3%] h-[39%] w-[33%]" />
-        <div
-          className="absolute rounded-md border border-blue-300 bg-blue-50/60"
-          style={{ left: '32%', top: '23%', width: '20%', height: '8%' }}
-        />
-        {[34, 41, 48].map((x) => (
-          <DecorDot key={`kt-cust-${x}`} x={x} y={37} className="border-blue-700 bg-blue-500" />
-        ))}
+        {/* ── Khu vực kỹ thuật (KT) — khung gọn theo đúng 1 hàng node, không để
+            trống thừa phía dưới như bản trước (cao 39% cho có 1 hàng). ── */}
+        <ZoneBox label="Khu vực kỹ thuật" className="left-[4%] top-[3%] h-[21%] w-[57%]" />
 
-        {/* ── Khu vực tư vấn — khung + khách trang trí 2 bên mỗi cặp bàn ── */}
-        <ZoneBox label="Khu vực tư vấn" className="left-[1%] top-[45%] h-[53%] w-[61%]" />
-        {[14, 32, 50].flatMap((gx) =>
-          [gx - 7, gx + 7].flatMap((x) =>
-            [55, 63, 71, 79].map((y) => (
-              <DecorDot key={`tv-cust-${x}-${y}`} x={x} y={y} className="border-red-500 bg-red-400" />
-            )),
-          ),
-        )}
+        {/* ── Khu vực tư vấn — cùng khung X với Kỹ thuật (thẳng hàng), đủ cao
+            cho 2 hàng bàn + chấm STT dưới mỗi bàn mà không để trống lớn giữa
+            2 hàng (toạ độ hàng đã đo thật, xem layoutConfig.ts). ── */}
+        <ZoneBox label="Khu vực tư vấn" className="left-[4%] top-[28%] h-[67%] w-[57%]" />
 
         {/* ── Khu vực khách nhận STT và đợi (gộp "Đã check-in" + "Chờ điều phối") ── */}
         <WaitingZone
@@ -215,16 +246,23 @@ export default function LayoutDashboard({
           />
         ))}
 
-        {/* ── Chấm STT khách đã tiếp nhận (mọi cụm) — bấm để xem khách ──
-            Luôn là 1 hàng chấm NGAY DƯỚI node (không còn badge đè lên node), đặt
-            cách node đúng `--dot-offset` nên không bao giờ chồng lên nhãn bàn
-            hay lên hàng bàn phía dưới. */}
+        {/* ── Ô STT khách đã tiếp nhận, ngay dưới mỗi bàn — bấm để xem khách ──
+            Bàn Tư vấn: LƯỚI CỐ ĐỊNH đủ DESK_CAPACITY ô (ô trống vẫn hiện, điền
+            trái→phải theo thứ tự check-in). Cụm khác: chỉ hiện khi có khách,
+            như cũ. Đặt cách node đúng `--dot-offset` nên không chồng lên nhãn
+            bàn hay hàng bàn phía dưới. */}
         {desks.map((d) => {
           const list = d.receivedCustomers ?? [];
-          if (list.length === 0) return null;
+          const fixedSlots = FIXED_SLOT_CLUSTERS.has(d.cluster);
+          if (!fixedSlots && list.length === 0) return null;
+
           const dim = dimmedIds?.has(d.id) ? 'pointer-events-none opacity-15' : '';
-          const shown = list.slice(0, MAX_DESK_DOTS);
+          const cap = DESK_CAPACITY[d.cluster];
+          const shown = list.slice(0, cap);
           const overflow = list.length - shown.length;
+          const slots: Array<DeskCustomer | null> = fixedSlots
+            ? Array.from({ length: cap }, (_, i) => shown[i] ?? null)
+            : shown;
 
           return (
             <div
@@ -232,23 +270,17 @@ export default function LayoutDashboard({
               className={`absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-[var(--dot-gap)] ${dim}`}
               style={{ left: `${d.x}%`, top: `calc(${d.y}% + var(--dot-offset))` }}
             >
-              {shown.map((c, i) => {
-                const active = selectedCustomer?.deskId === d.id && selectedCustomer?.index === i;
+              {slots.map((c, i) => {
+                const active = Boolean(c) && selectedCustomer?.deskId === d.id && selectedCustomer?.index === i;
                 return (
-                  <button
+                  <SttSlot
                     key={i}
-                    type="button"
-                    title={`${c.stt ? `#${c.stt} · ` : ''}${c.name ?? ''}`}
+                    customer={c}
+                    active={active}
                     onClick={() => onSelectCustomer?.(d.id, i)}
-                    className={[
-                      'flex h-[var(--dot)] min-w-[var(--dot)] shrink-0 items-center justify-center',
-                      'rounded-full bg-amber-500 px-[2px] text-[length:var(--dot-fs)] font-bold leading-none',
-                      'text-white shadow ring-1 ring-white transition hover:scale-125',
-                      active ? 'z-30 scale-125 ring-2 ring-blue-500 ring-offset-1' : '',
-                    ].join(' ')}
-                  >
-                    {c.stt ?? '•'}
-                  </button>
+                    size="var(--dot)"
+                    fontSize="var(--dot-fs)"
+                  />
                 );
               })}
               {overflow > 0 && (

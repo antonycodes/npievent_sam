@@ -44,10 +44,13 @@ export interface DeskCustomer {
   oldDeviceCheck?: string | null; // Cột "Thu cũ check" — nguyên văn lựa chọn (join Check in theo tên)
 }
 
-/** Số khách tối đa 1 nhân viên tiếp nhận đồng thời (theo cụm). */
+/**
+ * Số khách tối đa 1 nhân viên tiếp nhận đồng thời (theo cụm) — cũng là số ô
+ * STT cố định hiển thị dưới mỗi bàn Tư vấn (LayoutDashboard.tsx).
+ */
 export const DESK_CAPACITY: Record<ClusterKey, number> = {
   kythuat: 2,
-  consult: 2,
+  consult: 4,
 };
 
 /**

@@ -1064,3 +1064,89 @@ pane, kiểm tra bằng ảnh chụp + `read_page` (không đoán qua ảnh):
   nguyên văn "Đang tư vấn" (text thật trong cột Lark `Trạng thái hiện tại` của
   bảng "Thu cũ" cũ, không đổi theo quyết định #2) — có thể trông lệch ngữ
   cảnh dưới nhãn cụm "KỸ THUẬT" nhưng đây là dữ liệu thật, không phải bug.
+
+### Lưới STT cố định — khu chờ (24 ô) + mỗi bàn Tư vấn (4 ô) (2026-07-31)
+User gửi ảnh chụp bản build trên kèm "fix lại theo feedback này" nhưng không
+có text feedback cụ thể — hỏi lại bằng `AskUserQuestion` (multiSelect) với vài
+giả thuyết dựa trên so sánh với ảnh mặt bằng gốc. User chọn/mô tả rõ 2 ý:
+
+1. **Khu "Khách nhận STT và đợi" phải là lưới 24 ô CỐ ĐỊNH** (4 cột × 6 hàng),
+   ô trống vẫn hiện (không co giãn theo số khách như trước).
+2. **Mỗi bàn Tư vấn có tối đa 4 ô STT cố định** ngay dưới/quanh node (không
+   phải 2 chấm + hàng chấm trang trí đỏ không gắn dữ liệu như bản trước), node
+   TV nằm giữa các ô này, khách tự điền trái→phải theo thứ tự (đã có sẵn nhờ
+   `indexActiveByStaffKey` sort theo "Thời gian" tăng dần — không cần sort
+   thêm), popup vẫn neo gần node như cũ (không cần đổi `CustomerPopover`).
+
+**Chỉ áp dụng cho cụm `consult` (Tư vấn)** — cụm `kythuat` (KT) giữ nguyên
+hành vi cũ (ẩn hẳn khi chưa có khách, tối đa 2) vì user chỉ nhắc tới
+"TV1,2,3..." trong feedback, không nhắc KT.
+
+- `types/desk.ts`: `DESK_CAPACITY.consult` 2→4 (dùng luôn hằng số này làm số ô
+  cố định hiển thị, không thêm hằng số riêng).
+- `components/LayoutDashboard.tsx`: viết lại lớn:
+  - Bỏ hẳn khối tạo chấm trang trí đỏ quanh mỗi cặp TV (24 `DecorDot`) — thay
+    bằng ô STT thật (`SttSlot`, xem dưới) render trong đúng vòng lặp
+    "chấm dưới bàn" đã có sẵn.
+  - `SttSlot` — component dùng chung cho cả lưới 24 ô lẫn hàng ô dưới bàn: ô
+    có khách (cam, bấm được) hoặc ô trống (viền chấm, không tương tác).
+    **Bug tự bắt trước khi build**: lúc đầu định truyền size qua class
+    Tailwind dựng động kiểu `` `h-[${sizeVar}]` `` — SAI vì Tailwind quét
+    class lúc BUILD (static), không thấy được chuỗi ghép lúc runtime nên sẽ
+    không sinh CSS. Sửa bằng cách truyền `size`/`fontSize` là giá trị CSS
+    thật (`'var(--dot)'`...) qua `style` inline, không qua class.
+  - Vòng lặp "chấm dưới bàn" thêm `FIXED_SLOT_CLUSTERS = new Set(['consult'])`
+    — cụm trong set: LUÔN render đủ `DESK_CAPACITY[cluster]` ô (pad `null` cho
+    ô trống, không `return null` khi rỗng); cụm khác: giữ đúng hành vi cũ (ẩn
+    khi rỗng, cắt theo cap, có badge "+n" tràn).
+  - `WaitingZone` viết lại từ flex-wrap sang **CSS grid 4 cột cố định 24 ô**
+    (`WAITING_GRID_SIZE=24`, `WAITING_GRID_COLS=4`) — pad `null` cho ô trống,
+    ô thứ 24 nhường chỗ cho badge "+n" nếu >24 khách (tái dùng đúng pattern
+    tràn đã có ở chấm dưới bàn). Bỏ nhánh text "Không có khách" (lưới rỗng tự
+    nó đã truyền tải đủ ý, không cần text).
+- **Verify**: `tsc -b --noEmit` + `npm run build` sạch. Browser: khu chờ hiện
+  đúng lưới 4×6, 4 ô đầu có số (7,8,11,6), 20 ô còn lại trống (viền chấm nhạt).
+  Mỗi bàn TV hiện đúng 4 ô (TV2: 2 số [3,10] + 2 trống, TV4: 1 số [5] + 3
+  trống, TV1/3/5/6: 4 trống). Click ô "10" (Bùi Thanh Hà) → popover đúng vị
+  trí ngay dưới TV2, nội dung đúng ("Vị trí: Tư vấn · TV2"). KT giữ nguyên
+  hành vi cũ (KT1/2/3 vẫn chỉ hiện đúng số chấm có khách, không có ô trống).
+  Không console error.
+
+### Bỏ hình chữ nhật + 3 chấm xanh trang trí ở khu Kỹ thuật (2026-07-31)
+User gửi ảnh crop đúng 2 phần tử này kèm "xóa đi". Xoá khối `<div>` hình chữ
+nhật ("màn hình" trang trí) + 3 `DecorDot` xanh dương dưới hàng KT1-3 trong
+`LayoutDashboard.tsx`; xoá luôn component `DecorDot` (không còn nơi nào dùng
+sau khi bỏ 2 chỗ trang trí — TV đã bỏ ở lượt sửa trước, giờ tới KT). Khu Kỹ
+thuật giờ chỉ còn khung nét đứt + 3 node KT, không còn phần tử trang trí nào.
+`tsc`/`build` sạch, verify lại bằng browser.
+
+### Cân đối lại khoảng cách/không gian toàn board (2026-07-31)
+User: "dư thừa không gian mà các node khá gần nhau". Không đoán qua mắt — đo
+trực tiếp `getBoundingClientRect()` các node/hàng chấm STT thật trên trang
+đang chạy (% theo chiều cao/rộng board) để tìm đúng nguồn gây mất cân đối:
+- Khung "Khu vực kỹ thuật" cao 39% nhưng nội dung (1 hàng node + chấm) chỉ
+  chiếm tới ~20% → dư gần nửa khung là khoảng trắng.
+- 3 node KT chỉ cách nhau 7% (34/41/48) trong khi khung rộng 33% → co cụm giữa.
+- Khoảng cách giữa hàng trên/dưới mỗi cặp bàn Tư vấn (tv1/2...) 16% → 2 hàng
+  + chấm STT sát nhau, cảm giác chật.
+
+**Sửa** (`layoutConfig.ts` + `LayoutDashboard.tsx`):
+- Gộp 1 mảng `GROUP_X = [12, 32, 52]` (pitch 20%) dùng CHUNG cho cả 3 cột KT
+  lẫn 3 nhóm TV — 2 khung giờ thẳng hàng theo trục dọc (KT1 ở trên TV1/TV2,
+  v.v.), đọc có chủ đích hơn là toạ độ rời rạc mỗi khung một kiểu.
+- Khung KT thu từ `h-[39%]` xuống `h-[21%]` (đo thật: nội dung cao ~21%,
+  không còn dư khoảng trắng lớn phía dưới).
+- Pitch hàng Tư vấn tăng 16%→26% (y: 46/72, đo thật node cao ~4.7% + hàng
+  chấm STT kéo dài thêm ~5.3% dưới tâm node, chọn pitch đủ để không sát nhau
+  nhưng không tạo khoảng trắng lớn giữa 2 hàng như thử pitch 33% ban đầu —
+  bị dư hẳn ~25% khoảng trắng giữa, phải giảm lại).
+- Khung TV cao theo `h-[67%]`, đặt `top-[28%]` — cộng với khung KT + khoảng
+  cách giữa 2 khung, cột trái (KT+TV) khớp ĐÚNG chiều cao cột phải (khung STT,
+  cả 2 đều chạy từ 3.1% đến 94.9% — trùng khớp hoàn toàn, không phải cố tình
+  set bằng tay mà ra từ phép tính margin cân đối, xác nhận lại bằng đo đạc).
+- **Verify bằng số đo, không chỉ xem ảnh**: chụp lại toạ độ thật của 3 khung +
+  mọi hàng chấm sau khi sửa — margin trong khung Tư vấn còn 15.6%(trên)/
+  17.7%(dưới)/18.4%(giữa 2 hàng), cân đối hơn hẳn bản trước (top 17.66/giữa
+  25.33/dưới 13.81 — lệch hẳn về khoảng giữa). Test thêm ở tỉ lệ iPad
+  (1180×820 ≈ 2360:1640) — không vỡ, không chồng lấn. `tsc`/`build` sạch,
+  không console error.
